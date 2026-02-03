@@ -20,7 +20,7 @@ def get_device() -> str:
 
 
 class PieClassifier:
-    def __init__(self, threshold: float = 0.5):
+    def __init__(self, threshold: float = 0.7):
         self.threshold = threshold
         self.device = get_device()
 
