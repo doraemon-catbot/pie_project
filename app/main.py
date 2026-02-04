@@ -3,21 +3,20 @@
 import sys
 from pathlib import Path
 
-# 상위 디렉토리를 path에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import gradio as gr
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageOps, ImageFont
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
 
 from app.detection import ShelfDetector
 from app.classification import PieClassifier
-from app.analysis import calculate_share
+from app.analysis import calculate_share, extract_brand
 
-# 전역 모델 (한 번만 로드)
+# 전역 모델
 detector = None
 classifier = None
 
@@ -30,6 +29,7 @@ BRAND_COLORS = {
     "케익오뜨": "#FF69B4",
     "후레쉬베리": "#DC143C",
     "쉘위": "#00CED1",
+    "오뜨": "#FF69B4",
     "미분류": "#808080",
 }
 
@@ -43,13 +43,11 @@ def load_models():
 
 
 def analyze_image(image_input):
-    """이미지 분석 및 결과 반환"""
     if image_input is None:
         return None, None, "이미지를 업로드해주세요."
 
     load_models()
 
-    # 이미지 로드 및 전처리
     if isinstance(image_input, np.ndarray):
         image = Image.fromarray(image_input)
     else:
@@ -71,7 +69,8 @@ def analyze_image(image_input):
 
     # 검출 결과에 분류 결과 병합
     for det, cls in zip(detections, classifications):
-        det["brand"] = cls["brand"]
+        det["flavor"] = cls["flavor"]
+        det["brand"] = extract_brand(cls["flavor"])
         det["confidence"] = cls["confidence"]
 
     # 점유율 계산
@@ -90,34 +89,37 @@ def analyze_image(image_input):
 
 
 def draw_boxes(image: Image.Image, detections: list[dict]) -> Image.Image:
-    """이미지에 bbox와 라벨 그리기"""
     draw = ImageDraw.Draw(image)
+
+    # 한글 지원 폰트 로드 (Windows)
+    try:
+        font = ImageFont.truetype("malgun.ttf", 14)
+    except:
+        font = ImageFont.load_default()
 
     for det in detections:
         x1, y1, x2, y2 = det["bbox"]
         brand = det.get("brand", "미분류")
+        flavor = det.get("flavor", "미분류")
+        confidence = det.get("confidence", 0)
         color = BRAND_COLORS.get(brand, "#808080")
 
-        # bbox
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
 
-        # 라벨 배경
-        label = f"{brand}"
-        bbox = draw.textbbox((x1, y1), label)
+        # 브랜드명만 표시
+        bbox = draw.textbbox((x1, y1 - 18), brand, font=font)
         draw.rectangle([bbox[0]-2, bbox[1]-2, bbox[2]+2, bbox[3]+2], fill=color)
-        draw.text((x1, y1), label, fill="white")
+        draw.text((x1, y1 - 18), brand, fill="white", font=font)
 
     return image
 
 
 def create_chart(share_result: dict):
-    """점유율 파이 차트 생성"""
     brand_shares = share_result.get("brand_shares", {})
 
     if not brand_shares:
         return None
 
-    # 한글 폰트 설정
     plt.rcParams['font.family'] = 'Malgun Gothic'
     plt.rcParams['axes.unicode_minus'] = False
 
@@ -135,24 +137,30 @@ def create_chart(share_result: dict):
 
 
 def format_result(share_result: dict) -> str:
-    """결과 텍스트 포맷"""
     lines = [
         f"## 분석 결과",
         f"",
         f"**전체 검출**: {share_result['total_count']}개",
         f"**파이류**: {share_result['pie_count']}개 ({share_result['pie_share']}%)",
         f"",
-        f"### 브랜드별 현황",
+        f"### 브랜드별 현황 (Facing / 면적)",
     ]
 
     for brand, count in sorted(share_result["brand_counts"].items(), key=lambda x: -x[1]):
-        share = share_result["brand_shares"].get(brand, 0)
-        lines.append(f"- **{brand}**: {count}개 ({share}%)")
+        facing_share = share_result["brand_shares"].get(brand, 0)
+        area_share = share_result.get("brand_areas", {}).get(brand, 0)
+        lines.append(f"- **{brand}**: {count}개 (Facing {facing_share}% / 면적 {area_share}%)")
+
+    # 맛별 상세
+    if share_result.get("flavor_counts"):
+        lines.append("")
+        lines.append("### 맛별 상세")
+        for flavor, count in sorted(share_result["flavor_counts"].items(), key=lambda x: -x[1]):
+            lines.append(f"- {flavor}: {count}개")
 
     return "\n".join(lines)
 
 
-# Gradio UI
 with gr.Blocks(title="오리온 파이류 점유율 분석") as demo:
     gr.Markdown("# 오리온 파이류 매대 점유율 분석")
     gr.Markdown("매대 사진을 업로드하면 파이류 브랜드별 점유율을 분석합니다.")

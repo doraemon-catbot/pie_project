@@ -68,7 +68,55 @@ class ShelfDetector:
                 "bbox": [int(box[0]), int(box[1]), int(box[2]), int(box[3])],
                 "score": float(score)
             })
+
+        # 중첩 박스 제거 (박스 안의 박스 제거)
+        detections = self._remove_nested_boxes(detections)
+
         return detections
+
+    def _remove_nested_boxes(self, detections: list[dict], containment_threshold: float = 0.7) -> list[dict]:
+        """
+        한 박스가 다른 박스 안에 포함되어 있으면 제거.
+        containment_threshold: 작은 박스의 면적 중 큰 박스와 겹치는 비율이 이 값 이상이면 제거
+        """
+        if len(detections) <= 1:
+            return detections
+
+        keep = [True] * len(detections)
+
+        for i, det_i in enumerate(detections):
+            if not keep[i]:
+                continue
+            box_i = det_i["bbox"]
+            area_i = (box_i[2] - box_i[0]) * (box_i[3] - box_i[1])
+
+            for j, det_j in enumerate(detections):
+                if i == j or not keep[j]:
+                    continue
+                box_j = det_j["bbox"]
+                area_j = (box_j[2] - box_j[0]) * (box_j[3] - box_j[1])
+
+                # 겹치는 영역 계산
+                x1 = max(box_i[0], box_j[0])
+                y1 = max(box_i[1], box_j[1])
+                x2 = min(box_i[2], box_j[2])
+                y2 = min(box_i[3], box_j[3])
+
+                if x1 < x2 and y1 < y2:
+                    intersection = (x2 - x1) * (y2 - y1)
+
+                    # 작은 박스가 큰 박스 안에 포함되어 있는지 확인
+                    if area_i < area_j:
+                        containment_ratio = intersection / area_i
+                        if containment_ratio >= containment_threshold:
+                            keep[i] = False
+                            break
+                    else:
+                        containment_ratio = intersection / area_j
+                        if containment_ratio >= containment_threshold:
+                            keep[j] = False
+
+        return [det for det, k in zip(detections, keep) if k]
 
     def crop_detections(self, image: Image.Image, detections: list[dict]) -> list[Image.Image]:
         """검출 영역을 crop하여 반환"""

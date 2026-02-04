@@ -1,7 +1,8 @@
-"""파이류 7클래스 분류기 학습 스크립트"""
+"""파이류 맛별 분류기 학습 스크립트 (카테고리/회사/브랜드/맛 구조)"""
 
 import os
 from pathlib import Path
+import shutil
 
 import torch
 import torch.nn as nn
@@ -10,17 +11,56 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms, models
 
 # 설정
-DATA_DIR = Path("data/train")
+DATA_DIR = Path("data/train/파이")  # 파이 카테고리
+FLAT_DATA_DIR = Path("data/train_flat")  # 평탄화된 데이터
 MODEL_SAVE_PATH = Path("models/classifier/pie_classifier.pth")
 CLASS_NAMES_PATH = Path("models/classifier/class_names.txt")
 BATCH_SIZE = 32
-EPOCHS = 20
+EPOCHS = 25
 LEARNING_RATE = 0.001
 VAL_SPLIT = 0.2
 
 # 디바이스 설정
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}")
+
+# 데이터 평탄화 (회사/브랜드/맛/ → 맛/)
+print("데이터 구조 평탄화 중...")
+print(f"원본 경로: {DATA_DIR.absolute()}")
+
+if FLAT_DATA_DIR.exists():
+    shutil.rmtree(FLAT_DATA_DIR)
+FLAT_DATA_DIR.mkdir(parents=True)
+
+total_images = 0
+for company_dir in DATA_DIR.iterdir():
+    if not company_dir.is_dir():
+        continue
+    print(f"\n[{company_dir.name}]")
+
+    for brand_dir in company_dir.iterdir():
+        if not brand_dir.is_dir():
+            continue
+
+        for flavor_dir in brand_dir.iterdir():
+            if not flavor_dir.is_dir():
+                continue
+
+            # 맛 폴더를 평탄화된 위치로 복사
+            dest = FLAT_DATA_DIR / flavor_dir.name
+            if dest.exists():
+                # 이미 존재하면 파일들만 복사
+                for img in flavor_dir.glob("*"):
+                    if img.is_file():
+                        shutil.copy2(img, dest)
+            else:
+                shutil.copytree(flavor_dir, dest)
+
+            img_count = len(list(flavor_dir.glob("*")))
+            total_images += img_count
+            print(f"  {flavor_dir.name}: {img_count}장")
+
+print(f"\n총 이미지: {total_images}장")
 
 # 데이터 변환
 train_transform = transforms.Compose([
@@ -39,8 +79,8 @@ val_transform = transforms.Compose([
 ])
 
 # 데이터셋 로드
-print("데이터 로딩 중...")
-full_dataset = datasets.ImageFolder(DATA_DIR, transform=train_transform)
+print("\n데이터 로딩 중...")
+full_dataset = datasets.ImageFolder(FLAT_DATA_DIR, transform=train_transform)
 class_names = full_dataset.classes
 num_classes = len(class_names)
 
@@ -133,6 +173,9 @@ for epoch in range(EPOCHS):
 with open(CLASS_NAMES_PATH, "w", encoding="utf-8") as f:
     for name in class_names:
         f.write(name + "\n")
+
+# 평탄화 폴더 정리
+shutil.rmtree(FLAT_DATA_DIR)
 
 print("-" * 50)
 print(f"학습 완료! Best Val Accuracy: {best_acc:.4f}")

@@ -61,11 +61,11 @@ class PieClassifier:
         confidence = float(max_prob)
 
         if confidence >= self.threshold:
-            brand = self.class_names[int(max_idx)]
+            flavor = self.class_names[int(max_idx)]
         else:
-            brand = "미분류"
+            flavor = "미분류"
 
-        return {"brand": brand, "confidence": confidence}
+        return {"flavor": flavor, "confidence": confidence}
 
     @torch.inference_mode()
     def classify_batch(self, images: list[Image.Image]) -> list[dict]:
@@ -89,10 +89,10 @@ class PieClassifier:
             confidence = float(max_prob)
 
             if confidence >= self.threshold:
-                brand = self.class_names[int(max_idx)]
+                flavor = self.class_names[int(max_idx)]
             else:
-                brand = "미분류"
+                flavor = "미분류"
 
-            results.append({"brand": brand, "confidence": confidence})
+            results.append({"flavor": flavor, "confidence": confidence})
 
         return results

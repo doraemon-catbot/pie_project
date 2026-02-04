@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Models (large files)
+models/classifier/*.pth
+
+# Data (images - too large for git)
+data/train/
+data/train_flat/
+
+# Test images
+매대사진 테스트용/
+001/
+
+# Misc
+.DS_Store
+*.log
